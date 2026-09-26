@@ -40,6 +40,7 @@ export function PriceChart({
     const el = containerRef.current;
     if (!el) return;
     const chart = createChart(el, {
+      localization: { locale: "es-ES" },
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: "rgba(226,232,240,0.7)",

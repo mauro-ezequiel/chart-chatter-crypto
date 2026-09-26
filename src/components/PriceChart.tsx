@@ -61,7 +61,7 @@ export function PriceChart({
         pinch: true,
         axisPressedMouseMove: true,
       },
-      handleScroll: { pressedMouseMove: true, touch: true, mouseWheel: true },
+      handleScroll: { pressedMouseMove: true, mouseWheel: true },
       autoSize: true,
       height: 380,
     });

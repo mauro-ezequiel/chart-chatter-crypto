@@ -98,6 +98,21 @@ export function zones(c: Candle[], max = 8): Zone[] {
   return found.slice(-max);
 }
 
+// Volumen de compra/venta dentro de la zona desde que se formó (velas de Binance con taker buy)
+export function zoneVolume(c: Candle[], z: Zone) {
+  let buy = 0, sell = 0;
+  for (const x of c) {
+    if (x.time < z.from) continue;
+    const ov = Math.min(x.high, z.top) - Math.max(x.low, z.bottom);
+    if (ov <= 0) continue;
+    const frac = x.high > x.low ? ov / (x.high - x.low) : 1;
+    const v = x.volume * frac;
+    const bv = x.buyVolume != null ? x.buyVolume * frac : x.close >= x.open ? v : 0;
+    buy += bv; sell += v - bv;
+  }
+  return { buy, sell };
+}
+
 export type VP = { rows: { price: number; low: number; high: number; buy: number; sell: number }[]; poc: number; vah: number; val: number; max: number };
 
 export function volumeProfile(c: Candle[], rowsN = 24): VP | null {
@@ -107,8 +122,10 @@ export function volumeProfile(c: Candle[], rowsN = 24): VP | null {
   const rows = Array.from({ length: rowsN }, (_, i) => ({ low: lo + i * step, high: lo + (i + 1) * step, price: lo + (i + 0.5) * step, buy: 0, sell: 0 }));
   for (const x of c) {
     const a = Math.max(0, Math.floor((x.low - lo) / step)), b = Math.min(rowsN - 1, Math.floor((x.high - lo) / step));
-    const share = x.volume / (b - a + 1);
-    for (let r = a; r <= b; r++) (x.close >= x.open ? (rows[r].buy += share) : (rows[r].sell += share));
+    const n = b - a + 1;
+    const bShare = (x.buyVolume ?? (x.close >= x.open ? x.volume : 0)) / n;
+    const sShare = x.volume / n - bShare;
+    for (let r = a; r <= b; r++) { rows[r].buy += bShare; rows[r].sell += sShare; }
   }
   const tot = rows.map((r) => r.buy + r.sell);
   let pi = tot.indexOf(Math.max(...tot));

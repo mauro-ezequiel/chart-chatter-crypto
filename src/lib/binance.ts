@@ -17,6 +17,7 @@ export type Candle = {
   low: number;
   close: number;
   volume: number;
+  buyVolume?: number; // volumen de compra agresiva (taker buy)
 };
 
 export type DepthLevel = { price: number; qty: number };
@@ -81,6 +82,7 @@ export async function fetchCandles(
     low: Number(r[3]),
     close: Number(r[4]),
     volume: Number(r[5]),
+    buyVolume: Number(r[9]),
   }));
 }
 

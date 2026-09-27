@@ -24,8 +24,11 @@ import {
   volumeProfile,
   vwap,
   zones,
+  zoneVolume,
   type Pt,
+  type Zone,
 } from "@/lib/indicators";
+import { connectTrades, type ExStatus } from "@/lib/liveTrades";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -37,7 +40,7 @@ type Props = {
 
 const IND = [
   { id: "vp", label: "Perfil de volumen (rango)" },
-  { id: "zones", label: "Zonas Long/Short" },
+  { id: "zones", label: "Zonas Long/Short + volumen" },
   { id: "ema", label: "EMA 9/21/50" },
   { id: "vwap", label: "VWAP diario" },
   { id: "st", label: "Supertrend 10·3" },
@@ -47,6 +50,8 @@ const IND = [
 type IndId = (typeof IND)[number]["id"];
 
 const t = (p: Pt[]) => p.map((x) => ({ time: x.time as UTCTimestamp, value: x.value }));
+const fmt = (n: number) =>
+  new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: 2 }).format(n);
 
 export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -56,12 +61,45 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const indSeries = useRef<ISeriesApi<SeriesType>[]>([]);
   const candlesRef = useRef<Candle[]>([]);
+  const zonesRef = useRef<(Zone & { buy: number; sell: number })[]>([]);
+  const buckets = useRef(new Map<number, { buy: number; sell: number }>());
+  const bucketStep = useRef(0);
+  const [status, setStatus] = useState<ExStatus>({});
+  const statusRef = useRef<ExStatus>({});
   const [active, setActive] = useState<Set<IndId>>(new Set(["vp", "zones", "ema"]));
   const activeRef = useRef(active);
   activeRef.current = active;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataVer, setDataVer] = useState(0);
+
+  // trades en vivo de Binance, Binance Futuros, BingX, Bybit y OKX
+  useEffect(() => {
+    buckets.current = new Map();
+    bucketStep.current = 0;
+    statusRef.current = {};
+    setStatus({});
+    const stop = connectTrades(symbol, (tr) => {
+      if (!bucketStep.current) bucketStep.current = tr.price * 0.0005;
+      const k = Math.round(tr.price / bucketStep.current);
+      const b = buckets.current.get(k) ?? { buy: 0, sell: 0 };
+      if (tr.buy) b.buy += tr.qty; else b.sell += tr.qty;
+      buckets.current.set(k, b);
+      const s = (statusRef.current[tr.ex] ??= { on: true, buy: 0, sell: 0 });
+      s.on = true;
+      if (tr.buy) s.buy += tr.qty; else s.sell += tr.qty;
+    }, (ex, on) => {
+      const s = (statusRef.current[ex] ??= { on, buy: 0, sell: 0 });
+      s.on = on;
+    });
+    const iv = window.setInterval(() => setStatus(JSON.parse(JSON.stringify(statusRef.current))), 1000);
+    return () => { stop(); clearInterval(iv); };
+  }, [symbol]);
+
+  useEffect(() => {
+    const c = candlesRef.current;
+    zonesRef.current = zones(c).map((z) => ({ ...z, ...zoneVolume(c, z) }));
+  }, [dataVer]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -119,16 +157,30 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
       const act = activeRef.current;
 
       if (act.has("zones")) {
-        for (const z of zones(candles)) {
+        for (const z of zonesRef.current) {
           const x1 = x(z.from) ?? 0, y1 = y(z.top), y2 = y(z.bottom);
           if (y1 == null || y2 == null) continue;
           ctx.fillStyle = z.long ? "rgba(22,199,132,0.18)" : "rgba(234,57,67,0.18)";
           ctx.strokeStyle = z.long ? "rgba(22,199,132,0.8)" : "rgba(234,57,67,0.8)";
           ctx.fillRect(x1, y1, pw - x1, y2 - y1);
           ctx.strokeRect(x1, y1, pw - x1, y2 - y1);
-          ctx.fillStyle = z.long ? "#16c784" : "#ea3943";
+          // volumen en vivo multi-plataforma dentro de la zona
+          let lb = 0, ls = 0;
+          const step = bucketStep.current;
+          if (step) for (const [k, v] of buckets.current) {
+            const p = k * step;
+            if (p >= z.bottom && p <= z.top) { lb += v.buy; ls += v.sell; }
+          }
+          const top = Math.min(y1, y2);
           ctx.font = "bold 10px sans-serif";
-          ctx.fillText(z.long ? "LONG" : "SHORT", x1 + 4, Math.min(y1, y2) + 11);
+          ctx.fillStyle = z.long ? "#16c784" : "#ea3943";
+          ctx.fillText(z.long ? "LONG" : "SHORT", x1 + 4, top + 11);
+          ctx.font = "10px sans-serif";
+          ctx.fillStyle = "rgba(226,232,240,0.9)";
+          const d = z.buy - z.sell;
+          ctx.fillText(`Compra ${fmt(z.buy)} · Venta ${fmt(z.sell)} · Δ ${d >= 0 ? "+" : ""}${fmt(d)}`, x1 + 46, top + 11);
+          if (Math.abs(y2 - y1) > 20 || lb + ls > 0)
+            ctx.fillText(`En vivo: C ${fmt(lb)} · V ${fmt(ls)}`, x1 + 4, top + 23);
         }
       }
 
@@ -231,7 +283,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           if (!k || !seriesRef.current) return;
           const c: Candle = {
             time: Math.floor(Number(k.t) / 1000),
-            open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v),
+            open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v), buyVolume: Number(k.V),
           };
           const arr = candlesRef.current;
           if (arr.length && arr[arr.length - 1]!.time === c.time) arr[arr.length - 1] = c;
@@ -294,6 +346,29 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
             {error ?? "Cargando gráfico…"}
           </div>
         )}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2 sm:grid-cols-5">
+        {Object.keys(status).length === 0 && (
+          <span className="col-span-full text-[11px] text-muted-foreground">Conectando a las plataformas…</span>
+        )}
+        {Object.entries(status).map(([ex, s]) => {
+          const tot = s.buy + s.sell || 1;
+          return (
+            <div key={ex} className="rounded-lg bg-secondary px-2 py-1.5 text-[11px]">
+              <div className="flex items-center gap-1 font-semibold">
+                <span className={cn("h-1.5 w-1.5 rounded-full", s.on ? "bg-primary" : "bg-muted-foreground")} />
+                {ex}
+              </div>
+              <div className="tabular-nums text-muted-foreground">
+                L {fmt(s.buy)} · S {fmt(s.sell)}
+              </div>
+              <div className="mt-1 flex h-1 overflow-hidden rounded">
+                <div style={{ width: `${(s.buy / tot) * 100}%` }} className="bg-[#16c784]" />
+                <div className="flex-1 bg-[#ea3943]" />
+              </div>
+            </div>
+          );
+        })}
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
         Ajustado para 30M–1D. El perfil de volumen se calcula sobre el rango visible: haz zoom o desplázate para cambiar el rango.

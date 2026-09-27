@@ -24,8 +24,11 @@ import {
   volumeProfile,
   vwap,
   zones,
+  zoneVolume,
   type Pt,
+  type Zone,
 } from "@/lib/indicators";
+import { connectTrades, type ExStatus } from "@/lib/liveTrades";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -37,7 +40,7 @@ type Props = {
 
 const IND = [
   { id: "vp", label: "Perfil de volumen (rango)" },
-  { id: "zones", label: "Zonas Long/Short" },
+  { id: "zones", label: "Zonas Long/Short + volumen" },
   { id: "ema", label: "EMA 9/21/50" },
   { id: "vwap", label: "VWAP diario" },
   { id: "st", label: "Supertrend 10·3" },
@@ -47,6 +50,8 @@ const IND = [
 type IndId = (typeof IND)[number]["id"];
 
 const t = (p: Pt[]) => p.map((x) => ({ time: x.time as UTCTimestamp, value: x.value }));
+const fmt = (n: number) =>
+  new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: 2 }).format(n);
 
 export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -56,12 +61,45 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const indSeries = useRef<ISeriesApi<SeriesType>[]>([]);
   const candlesRef = useRef<Candle[]>([]);
+  const zonesRef = useRef<(Zone & { buy: number; sell: number })[]>([]);
+  const buckets = useRef(new Map<number, { buy: number; sell: number }>());
+  const bucketStep = useRef(0);
+  const [status, setStatus] = useState<ExStatus>({});
+  const statusRef = useRef<ExStatus>({});
   const [active, setActive] = useState<Set<IndId>>(new Set(["vp", "zones", "ema"]));
   const activeRef = useRef(active);
   activeRef.current = active;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataVer, setDataVer] = useState(0);
+
+  // trades en vivo de Binance, Binance Futuros, BingX, Bybit y OKX
+  useEffect(() => {
+    buckets.current = new Map();
+    bucketStep.current = 0;
+    statusRef.current = {};
+    setStatus({});
+    const stop = connectTrades(symbol, (tr) => {
+      if (!bucketStep.current) bucketStep.current = tr.price * 0.0005;
+      const k = Math.round(tr.price / bucketStep.current);
+      const b = buckets.current.get(k) ?? { buy: 0, sell: 0 };
+      if (tr.buy) b.buy += tr.qty; else b.sell += tr.qty;
+      buckets.current.set(k, b);
+      const s = (statusRef.current[tr.ex] ??= { on: true, buy: 0, sell: 0 });
+      s.on = true;
+      if (tr.buy) s.buy += tr.qty; else s.sell += tr.qty;
+    }, (ex, on) => {
+      const s = (statusRef.current[ex] ??= { on, buy: 0, sell: 0 });
+      s.on = on;
+    });
+    const iv = window.setInterval(() => setStatus(JSON.parse(JSON.stringify(statusRef.current))), 1000);
+    return () => { stop(); clearInterval(iv); };
+  }, [symbol]);
+
+  useEffect(() => {
+    const c = candlesRef.current;
+    zonesRef.current = zones(c).map((z) => ({ ...z, ...zoneVolume(c, z) }));
+  }, [dataVer]);
 
   useEffect(() => {
     const el = containerRef.current;

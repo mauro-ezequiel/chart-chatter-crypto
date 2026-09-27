@@ -234,7 +234,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
             open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v),
           };
           const arr = candlesRef.current;
-          if (arr.length && arr[arr.length - 1].time === c.time) arr[arr.length - 1] = c;
+          if (arr.length && arr[arr.length - 1]!.time === c.time) arr[arr.length - 1] = c;
           else arr.push(c);
           seriesRef.current.update({ ...c, time: c.time as UTCTimestamp });
           onPrice(c.close);

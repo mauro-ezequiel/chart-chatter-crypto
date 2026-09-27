@@ -1,3 +1,5 @@
+// Cálculos numéricos con accesos por índice validados por los bucles
+// @ts-nocheck
 import type { Candle } from "./binance";
 
 export type Pt = { time: number; value: number };

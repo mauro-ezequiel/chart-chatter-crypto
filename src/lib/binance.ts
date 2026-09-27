@@ -16,6 +16,7 @@ export type Candle = {
   high: number;
   low: number;
   close: number;
+  volume: number;
 };
 
 export type DepthLevel = { price: number; qty: number };
@@ -24,7 +25,9 @@ export const INTERVALS = [
   "1m",
   "5m",
   "15m",
+  "30m",
   "1h",
+  "2h",
   "4h",
   "1d",
   "1w",
@@ -77,6 +80,7 @@ export async function fetchCandles(
     high: Number(r[2]),
     low: Number(r[3]),
     close: Number(r[4]),
+    volume: Number(r[5]),
   }));
 }
 

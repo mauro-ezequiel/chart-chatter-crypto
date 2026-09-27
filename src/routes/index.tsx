@@ -32,7 +32,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [symbol, setSymbol] = useState("BTCUSDT");
-  const [interval, setInterval] = useState<Interval>("15m");
+  const [interval, setInterval] = useState<Interval>("1h");
   const [price, setPrice] = useState(0);
   const [mounted, setMounted] = useState(false);
 

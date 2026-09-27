@@ -119,16 +119,30 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
       const act = activeRef.current;
 
       if (act.has("zones")) {
-        for (const z of zones(candles)) {
+        for (const z of zonesRef.current) {
           const x1 = x(z.from) ?? 0, y1 = y(z.top), y2 = y(z.bottom);
           if (y1 == null || y2 == null) continue;
           ctx.fillStyle = z.long ? "rgba(22,199,132,0.18)" : "rgba(234,57,67,0.18)";
           ctx.strokeStyle = z.long ? "rgba(22,199,132,0.8)" : "rgba(234,57,67,0.8)";
           ctx.fillRect(x1, y1, pw - x1, y2 - y1);
           ctx.strokeRect(x1, y1, pw - x1, y2 - y1);
-          ctx.fillStyle = z.long ? "#16c784" : "#ea3943";
+          // volumen en vivo multi-plataforma dentro de la zona
+          let lb = 0, ls = 0;
+          const step = bucketStep.current;
+          if (step) for (const [k, v] of buckets.current) {
+            const p = k * step;
+            if (p >= z.bottom && p <= z.top) { lb += v.buy; ls += v.sell; }
+          }
+          const top = Math.min(y1, y2);
           ctx.font = "bold 10px sans-serif";
-          ctx.fillText(z.long ? "LONG" : "SHORT", x1 + 4, Math.min(y1, y2) + 11);
+          ctx.fillStyle = z.long ? "#16c784" : "#ea3943";
+          ctx.fillText(z.long ? "LONG" : "SHORT", x1 + 4, top + 11);
+          ctx.font = "10px sans-serif";
+          ctx.fillStyle = "rgba(226,232,240,0.9)";
+          const d = z.buy - z.sell;
+          ctx.fillText(`Compra ${fmt(z.buy)} · Venta ${fmt(z.sell)} · Δ ${d >= 0 ? "+" : ""}${fmt(d)}`, x1 + 46, top + 11);
+          if (Math.abs(y2 - y1) > 20 || lb + ls > 0)
+            ctx.fillText(`En vivo: C ${fmt(lb)} · V ${fmt(ls)}`, x1 + 4, top + 23);
         }
       }
 

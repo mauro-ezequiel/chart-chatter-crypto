@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MarketSearch } from "@/components/MarketSearch";
 import { PriceChart } from "@/components/PriceChart";
 import { OrderBook } from "@/components/OrderBook";
+import { LiquidationHeatmap } from "@/components/LiquidationHeatmap";
 import { formatPrice, type Interval } from "@/lib/binance";
 
 export const Route = createFileRoute("/")({
@@ -70,6 +71,7 @@ function Index() {
               onPrice={handlePrice}
             />
           )}
+          {mounted && <LiquidationHeatmap symbol={symbol} lastPrice={price} />}
         </div>
 
         {mounted && <OrderBook symbol={symbol} lastPrice={price} />}

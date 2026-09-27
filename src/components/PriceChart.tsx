@@ -283,7 +283,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           if (!k || !seriesRef.current) return;
           const c: Candle = {
             time: Math.floor(Number(k.t) / 1000),
-            open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v),
+            open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v), buyVolume: Number(k.V),
           };
           const arr = candlesRef.current;
           if (arr.length && arr[arr.length - 1]!.time === c.time) arr[arr.length - 1] = c;
@@ -346,6 +346,29 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
             {error ?? "Cargando gráfico…"}
           </div>
         )}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2 sm:grid-cols-5">
+        {Object.keys(status).length === 0 && (
+          <span className="col-span-full text-[11px] text-muted-foreground">Conectando a las plataformas…</span>
+        )}
+        {Object.entries(status).map(([ex, s]) => {
+          const tot = s.buy + s.sell || 1;
+          return (
+            <div key={ex} className="rounded-lg bg-secondary px-2 py-1.5 text-[11px]">
+              <div className="flex items-center gap-1 font-semibold">
+                <span className={cn("h-1.5 w-1.5 rounded-full", s.on ? "bg-primary" : "bg-muted-foreground")} />
+                {ex}
+              </div>
+              <div className="tabular-nums text-muted-foreground">
+                L {fmt(s.buy)} · S {fmt(s.sell)}
+              </div>
+              <div className="mt-1 flex h-1 overflow-hidden rounded">
+                <div style={{ width: `${(s.buy / tot) * 100}%` }} className="bg-[#16c784]" />
+                <div className="flex-1 bg-[#ea3943]" />
+              </div>
+            </div>
+          );
+        })}
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
         Ajustado para 30M–1D. El perfil de volumen se calcula sobre el rango visible: haz zoom o desplázate para cambiar el rango.

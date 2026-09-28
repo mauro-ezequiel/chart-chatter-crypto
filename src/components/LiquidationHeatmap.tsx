@@ -33,7 +33,7 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
         const bids = data.bids.map(([p, q]) => [Number(p), Number(p) * Number(q)] as [number, number]).filter(([p, v]) => p > 0 && v > 0);
         const asks = data.asks.map(([p, q]) => [Number(p), Number(p) * Number(q)] as [number, number]).filter(([p, v]) => p > 0 && v > 0);
         if (!bids.length || !asks.length) throw new Error("Sin órdenes");
-        const mid = (bids[0][0] + asks[0][0]) / 2;
+        const mid = ((bids[0]?.[0] ?? 0) + (asks[0]?.[0] ?? 0)) / 2;
         const span = Math.max((mid - (bids.at(-1)?.[0] ?? mid)) / mid, ((asks.at(-1)?.[0] ?? mid) - mid) / mid);
         range.current = Math.max(0.001, Math.min(0.02, span * 1.5));
         depth.current = [...depth.current.slice(-(COLS - 1)), { bids, asks }];
@@ -90,11 +90,13 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
         const amounts = Array.from({ length: ROWS }, () => ({ bid: 0, ask: 0 }));
         for (const [price, usd] of snap.bids) {
           const row = Math.floor(((hi - price) / (hi - lo)) * ROWS);
-          if (row >= 0 && row < ROWS) amounts[row].bid += usd;
+          const cell = amounts[row];
+          if (cell) cell.bid += usd;
         }
         for (const [price, usd] of snap.asks) {
           const row = Math.floor(((hi - price) / (hi - lo)) * ROWS);
-          if (row >= 0 && row < ROWS) amounts[row].ask += usd;
+          const cell = amounts[row];
+          if (cell) cell.ask += usd;
         }
         return amounts;
       });
@@ -105,6 +107,7 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
         if (!snapshot) break;
         for (let row = 0; row < ROWS; row++) {
           const cell = snapshot[row];
+          if (!cell) continue;
           const usd = Math.max(cell.bid, cell.ask);
           if (usd <= 0) continue;
           ctx.fillStyle = cell.bid >= cell.ask ? bull : bear;

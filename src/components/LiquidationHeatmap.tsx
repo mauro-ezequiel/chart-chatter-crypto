@@ -29,11 +29,23 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
       raf = requestAnimationFrame(draw);
       const cv = cvRef.current; if (!cv) return;
       const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
-      if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+      if (!W || !H) return;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+        cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      }
       const ctx = cv.getContext("2d")!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#0b0f19"; ctx.fillRect(0, 0, W, H);
-      const P = priceRef.current; if (!P) return;
+      ctx.fillStyle = "#111827"; ctx.fillRect(0, 0, W, H);
+      // rejilla de fondo para que el mapa sea visible aunque no haya datos
+      ctx.strokeStyle = "rgba(148,163,184,0.12)"; ctx.lineWidth = 1;
+      for (let i = 1; i < 5; i++) {
+        ctx.beginPath(); ctx.moveTo(0, (H * i) / 5); ctx.lineTo(W - 60, (H * i) / 5); ctx.stroke();
+      }
+      const P = priceRef.current; if (!P) {
+        ctx.fillStyle = "rgba(226,232,240,0.6)"; ctx.font = "12px sans-serif";
+        ctx.fillText("Esperando precio…", 12, 20);
+        return;
+      }
       const now = Date.now(), start = now - COLS * COL_MS;
       liqs.current = liqs.current.filter((l) => l.time >= start);
       const lo = P * (1 - RANGE), hi = P * (1 + RANGE);
@@ -71,7 +83,7 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
           <span className="text-[#16c784]">Longs liq. ${fmt(tot.l)}</span> · <span className="text-[#ea3943]">Shorts liq. ${fmt(tot.s)}</span>
         </span>
       </div>
-      <canvas ref={cvRef} className="h-[260px] w-full rounded-lg" />
+      <canvas ref={cvRef} className="h-[260px] w-full rounded-lg border border-border" />
       <div className="mt-2 max-h-40 space-y-0.5 overflow-auto text-[11px] tabular-nums">
         {!symbol.endsWith("USDT") && <p className="text-muted-foreground">Solo disponible para pares USDT.</p>}
         {recent.length === 0 && symbol.endsWith("USDT") && <p className="text-muted-foreground">Esperando liquidaciones… (pueden tardar según el movimiento del mercado)</p>}

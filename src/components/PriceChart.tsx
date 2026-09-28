@@ -271,7 +271,13 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
         if (cancelled || !seriesRef.current) return;
         candlesRef.current = candles;
         seriesRef.current.setData(candles.map((c) => ({ ...c, time: c.time as UTCTimestamp })));
-        chartRef.current?.timeScale().setVisibleLogicalRange({ from: candles.length - 150, to: candles.length + 8 });
+        // centrar la vista en el precio actual al cambiar de moneda o temporalidad
+        requestAnimationFrame(() => {
+          const ts = chartRef.current?.timeScale();
+          if (!ts) return;
+          ts.setVisibleLogicalRange({ from: candles.length - 150, to: candles.length + 8 });
+          ts.scrollToRealTime();
+        });
         const last = candles[candles.length - 1];
         if (last) onPrice(last.close);
         setDataVer((v) => v + 1);

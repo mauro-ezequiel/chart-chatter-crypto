@@ -34,7 +34,7 @@ export function LiquidationHeatmap({ symbol, lastPrice }: { symbol: string; last
         const asks = data.asks.map(([p, q]) => [Number(p), Number(p) * Number(q)] as [number, number]).filter(([p, v]) => p > 0 && v > 0);
         if (!bids.length || !asks.length) throw new Error("Sin órdenes");
         const mid = (bids[0][0] + asks[0][0]) / 2;
-        const span = Math.max((mid - bids.at(-1)![0]) / mid, (asks.at(-1)![0] - mid) / mid);
+        const span = Math.max((mid - (bids.at(-1)?.[0] ?? mid)) / mid, ((asks.at(-1)?.[0] ?? mid) - mid) / mid);
         range.current = Math.max(0.001, Math.min(0.02, span * 1.5));
         depth.current = [...depth.current.slice(-(COLS - 1)), { bids, asks }];
         setDepthState("Liquidez de órdenes · Binance Futuros · actualización cada 10 s");

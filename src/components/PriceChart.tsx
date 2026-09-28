@@ -29,6 +29,8 @@ import {
   type Zone,
 } from "@/lib/indicators";
 import { connectTrades, type ExStatus } from "@/lib/liveTrades";
+import { TrendDial } from "@/components/TrendDial";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -66,12 +68,13 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
   const bucketStep = useRef(0);
   const [status, setStatus] = useState<ExStatus>({});
   const statusRef = useRef<ExStatus>({});
-  const [active, setActive] = useState<Set<IndId>>(new Set(["vp", "zones", "ema"]));
+  const [active, setActive] = useState<Set<IndId>>(new Set(["vp", "zones", "ema", "st", "bb"]));
   const activeRef = useRef(active);
   activeRef.current = active;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataVer, setDataVer] = useState(0);
+  const [trendCandles, setTrendCandles] = useState<Candle[]>([]);
 
   // trades en vivo de Binance, Binance Futuros, BingX, Bybit y OKX
   useEffect(() => {
@@ -265,6 +268,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
     let lastRebuild = 0;
     setLoading(true);
     setError(null);
+    setTrendCandles([]);
 
     fetchCandles(symbol, interval)
       .then((candles) => {
@@ -280,6 +284,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
         });
         const last = candles[candles.length - 1];
         if (last) onPrice(last.close);
+        setTrendCandles([...candles]);
         setDataVer((v) => v + 1);
         setLoading(false);
 
@@ -297,7 +302,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           seriesRef.current.update({ ...c, time: c.time as UTCTimestamp });
           onPrice(c.close);
           const now = Date.now();
-          if (now - lastRebuild > 3000) { lastRebuild = now; setDataVer((v) => v + 1); }
+           if (now - lastRebuild > 3000) { lastRebuild = now; setTrendCandles([...arr]); setDataVer((v) => v + 1); }
         };
       })
       .catch((e: Error) => {
@@ -316,32 +321,36 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
     <div ref={wrapRef} className="rounded-2xl border border-border bg-card p-3">
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {INTERVALS.map((i) => (
-          <button
+          <Button
             key={i}
             onClick={() => onIntervalChange(i)}
+            variant={i === interval ? "default" : "secondary"}
+            size="sm"
             className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
-              i === interval ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground",
+              "h-7 px-2.5 text-xs font-semibold",
             )}
           >
             {i.toUpperCase()}
-          </button>
+          </Button>
         ))}
         <span className="ml-auto text-[11px] text-muted-foreground">Rueda / pellizcar = zoom · arrastrar = mover</span>
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
         <span className="mr-1 text-[11px] font-semibold uppercase text-muted-foreground">Indicadores</span>
         {IND.map((d) => (
-          <button
+          <Button
             key={d.id}
             onClick={() => toggle(d.id)}
+            variant="outline"
+            size="sm"
+            aria-pressed={active.has(d.id)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+              "h-7 rounded-full px-2.5 text-[11px] font-medium",
               active.has(d.id) ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
             {d.label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="relative">
@@ -376,6 +385,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           );
         })}
       </div>
+      <TrendDial candles={trendCandles} interval={interval} />
       <p className="mt-2 text-[11px] text-muted-foreground">
         Ajustado para 30M–1D. El perfil de volumen se calcula sobre el rango visible: haz zoom o desplázate para cambiar el rango.
       </p>

@@ -1,0 +1,3 @@
+- [x] Mostrar EMA 9/21/50, Supertrend 10·3 y Bollinger 20·2 por defecto.
+- [x] Hacer visible el mapa con liquidez real y distinguirla de liquidaciones confirmadas.
+- [x] Agregar un círculo de tendencia que siga la moneda y temporalidad elegidas.

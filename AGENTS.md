@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep market-data acquisition in `src/lib` or focused data effects and render chart-specific views as separate components, so changing symbol and timeframe refreshes every related visualization consistently.

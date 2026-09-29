@@ -1,21 +1,37 @@
-import type { Candle, Interval } from "@/lib/binance";
-import { bollinger, ema, supertrend } from "@/lib/indicators";
+import { useEffect, useState } from "react";
+import { fetchCandles, formatCompact, type Candle, type Interval } from "@/lib/binance";
+import { combine, HIGHER_TF, technical, whaleScore, zoneScore, type Factor, type Whales, type ZoneVol } from "@/lib/trendScore";
 
-export function TrendDial({ candles, interval }: { candles: Candle[]; interval: Interval }) {
-  const latest = candles.at(-1);
-  const e9 = ema(candles, 9).at(-1)?.value;
-  const e21 = ema(candles, 21).at(-1)?.value;
-  const e50 = ema(candles, 50).at(-1)?.value;
-  const trend = supertrend(candles, 10, 3).at(-1);
-  const bands = bollinger(candles, 20, 2);
-  const middle = bands.mid.at(-1)?.value;
-  const ready = latest && e9 !== undefined && e21 !== undefined && e50 !== undefined && trend && middle !== undefined;
-  const score = ready
-    ? (e9 > e21 ? 1 : -1) + (e21 > e50 ? 1 : -1) + (latest.close > e21 ? 1 : -1) + (trend.up ? 1 : -1) + (latest.close > middle ? 1 : -1)
-    : 0;
-  const state = !ready ? "Calculando" : score >= 3 ? "Alcista" : score <= -3 ? "Bajista" : "Punto medio";
-  const tone = !ready || Math.abs(score) < 3 ? "text-primary" : score > 0 ? "text-bull" : "text-bear";
-  const strength = ready ? Math.abs(score) / 5 : 0;
+type Props = { symbol: string; candles: Candle[]; interval: Interval; zones: ZoneVol[]; whales: Whales };
+
+export function TrendDial({ symbol, candles, interval, zones, whales }: Props) {
+  const [higher, setHigher] = useState<{ tf: Interval; c: Candle[] }[]>([]);
+
+  // velas de temporalidades superiores para confirmar la tendencia
+  useEffect(() => {
+    let off = false;
+    const load = () =>
+      Promise.all(HIGHER_TF[interval].map((tf) => fetchCandles(symbol, tf).then((c) => ({ tf, c })).catch(() => null)))
+        .then((r) => !off && setHigher(r.filter((x): x is { tf: Interval; c: Candle[] } => !!x)));
+    setHigher([]);
+    load();
+    const iv = window.setInterval(load, 60000);
+    return () => { off = true; clearInterval(iv); };
+  }, [symbol, interval]);
+
+  const price = candles.at(-1)?.close ?? 0;
+  const tech = technical(candles);
+  const htf = higher.map((h) => technical(h.c)).filter((v): v is number => v !== null);
+  const factors: Factor[] = [
+    { label: `Técnico ${interval.toUpperCase()}`, value: tech, weight: 0.35 },
+    { label: `Temporalidades mayores (${HIGHER_TF[interval].join(", ").toUpperCase() || "—"})`, value: htf.length ? htf.reduce((a, b) => a + b, 0) / htf.length : null, weight: 0.25 },
+    { label: "Zonas de operaciones", value: zoneScore(zones, price), weight: 0.15 },
+    { label: `Ballenas (${whales.count} órdenes ≥ 100K)`, value: whaleScore(whales), weight: 0.25 },
+  ];
+  const score = tech === null ? null : combine(factors);
+  const state = score === null ? "Calculando" : score >= 0.35 ? "Alcista" : score <= -0.35 ? "Bajista" : "Punto medio";
+  const tone = score === null || Math.abs(score) < 0.35 ? "text-primary" : score > 0 ? "text-bull" : "text-bear";
+  const angle = (score ?? 0) * 90; // -90° bajista … +90° alcista
 
   return (
     <section className="border-t border-border py-5" aria-label="Tendencia de la criptomoneda">
@@ -23,20 +39,43 @@ export function TrendDial({ candles, interval }: { candles: Candle[]; interval: 
         <h2 className="text-sm font-semibold">Tendencia</h2>
         <span className="text-xs text-muted-foreground">Temporalidad {interval.toUpperCase()}</span>
       </div>
-      <div className="flex items-center gap-5">
-        <div className={`relative size-36 shrink-0 ${tone}`} role="img" aria-label={`Tendencia ${state} en ${interval}`}>
-          <svg className="size-full -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
-            <circle cx="60" cy="60" r="51" fill="none" stroke="var(--border)" strokeWidth="8" />
-            <circle cx="60" cy="60" r="51" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${Math.max(0.08, strength) * 320} 320`} />
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+        <div className={`relative h-28 w-52 shrink-0 self-center ${tone}`} role="img" aria-label={`Tendencia ${state} en ${interval}`}>
+          <svg className="size-full" viewBox="0 0 200 110" aria-hidden="true">
+            <path d="M15 100 A85 85 0 0 1 72 20" fill="none" stroke="var(--bear)" strokeWidth="10" opacity="0.55" />
+            <path d="M76 18 A85 85 0 0 1 124 18" fill="none" stroke="var(--primary)" strokeWidth="10" opacity="0.55" />
+            <path d="M128 20 A85 85 0 0 1 185 100" fill="none" stroke="var(--bull)" strokeWidth="10" opacity="0.55" />
+            <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: "100px 100px", transition: "transform 0.8s ease" }}>
+              <line x1="100" y1="100" x2="100" y2="28" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+            </g>
+            <circle cx="100" cy="100" r="7" fill="currentColor" />
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <div className="absolute inset-x-0 -bottom-5 text-center">
             <span className="text-lg font-bold">{state}</span>
-            {ready && <span className="mt-1 text-xs text-muted-foreground">{Math.round(strength * 100)}% fuerza</span>}
+            {score !== null && <span className="ml-2 text-xs text-muted-foreground">{Math.round(Math.abs(score) * 100)}%</span>}
           </div>
         </div>
-        <div className="min-w-0 text-xs leading-5 text-muted-foreground">
-          <p>Lectura de EMA 9/21/50, Supertrend 10·3 y Bollinger 20·2.</p>
-          <p className="mt-2">Se actualiza con las velas de {interval.toUpperCase()}.</p>
+        <div className="mt-4 min-w-0 flex-1 space-y-2 text-xs sm:mt-0">
+          {factors.map((f) => (
+            <div key={f.label}>
+              <div className="flex justify-between gap-2 text-muted-foreground">
+                <span className="truncate">{f.label}</span>
+                <span className="tabular-nums">{f.value === null ? "sin datos" : `${f.value > 0 ? "+" : ""}${Math.round(f.value * 100)}`}</span>
+              </div>
+              <div className="relative mt-1 h-1.5 rounded bg-secondary">
+                <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                {f.value !== null && (
+                  <div
+                    className={`absolute inset-y-0 rounded ${f.value >= 0 ? "bg-bull" : "bg-bear"}`}
+                    style={f.value >= 0 ? { left: "50%", width: `${f.value * 50}%` } : { right: "50%", width: `${-f.value * 50}%` }}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+          <p className="pt-1 text-muted-foreground">
+            Ballenas: compra {formatCompact(whales.buy)} · venta {formatCompact(whales.sell)} USDT. Solo marca tendencia con ±35% de confluencia.
+          </p>
         </div>
       </div>
     </section>

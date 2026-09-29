@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Search, Star } from "lucide-react";
 import {
   BINANCE_WS,
   fetchMarkets,
@@ -12,12 +13,16 @@ import { cn } from "@/lib/utils";
 type Props = {
   selected: string;
   onSelect: (symbol: string) => void;
+  favorites: Set<string>;
+  signedIn: boolean;
+  onToggleFavorite: (symbol: string) => void;
 };
 
-export function MarketSearch({ selected, onSelect }: Props) {
+export function MarketSearch({ selected, onSelect, favorites, signedIn, onToggleFavorite }: Props) {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"all" | "fav">("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -53,11 +58,12 @@ export function MarketSearch({ selected, onSelect }: Props) {
 
   const results = useMemo(() => {
     const q = query.trim().toUpperCase();
-    const list = q
+    let list = q
       ? markets.filter((m) => m.base.includes(q) || m.symbol.includes(q))
       : markets;
+    if (tab === "fav") list = list.filter((m) => favorites.has(m.symbol));
     return list.slice(0, 60);
-  }, [markets, query]);
+  }, [markets, query, tab, favorites]);
 
   return (
     <div className="rounded-2xl border border-border bg-card p-3">
@@ -71,23 +77,66 @@ export function MarketSearch({ selected, onSelect }: Props) {
         />
       </div>
 
-      <div className="mt-3 max-h-[420px] overflow-y-auto pr-1">
+      <div className="mt-3 flex gap-1 text-xs">
+        {(["all", "fav"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 font-medium",
+              tab === t ? "bg-secondary text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {t === "all" ? "Todas" : `★ Favoritas (${favorites.size})`}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 max-h-[420px] overflow-y-auto pr-1">
         {error && <p className="p-3 text-xs text-bear">{error}</p>}
         {!error && markets.length === 0 && (
           <p className="p-3 text-xs text-muted-foreground">
             Cargando mercados en vivo…
           </p>
         )}
+        {tab === "fav" && !signedIn && (
+          <p className="p-3 text-xs text-muted-foreground">
+            <Link to="/auth" className="text-primary">Ingresá</Link> para guardar tus favoritas en todos tus dispositivos.
+          </p>
+        )}
+        {tab === "fav" && signedIn && favorites.size === 0 && (
+          <p className="p-3 text-xs text-muted-foreground">
+            Tocá la ★ de una moneda para agregarla.
+          </p>
+        )}
         {results.map((m) => (
-          <button
+          <div
             key={m.symbol}
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(m.symbol)}
+            onKeyDown={(e) => e.key === "Enter" && onSelect(m.symbol)}
             className={cn(
-              "flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors",
+              "flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition-colors",
               m.symbol === selected ? "bg-secondary" : "hover:bg-secondary/60",
             )}
           >
-            <div className="min-w-0">
+            <button
+              aria-label={favorites.has(m.symbol) ? "Quitar de favoritas" : "Agregar a favoritas"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(m.symbol);
+              }}
+              className="shrink-0"
+            >
+              <Star
+                className={cn(
+                  "size-4",
+                  favorites.has(m.symbol) ? "fill-primary text-primary" : "text-muted-foreground",
+                )}
+              />
+            </button>
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
                 {m.base}
                 <span className="text-muted-foreground">/{m.quote}</span>
@@ -108,7 +157,7 @@ export function MarketSearch({ selected, onSelect }: Props) {
                 {m.changePct.toFixed(2)}%
               </p>
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

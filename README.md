@@ -1,14 +1,20 @@
-# Welcome to your Lovable project
+# Crypto Live View
+
+Crea una página interactiva en el cual  haya un buscador que vea todas las crypto monedas en vivo.
+
+Una vez seccióne a una crypto moneda, se vea un gráfico donde se pueda hacer zoom, cambiar las temporalidades en vivo y se vea las ordenes de compra en qué posición está
 
 This project was built with [Lovable](https://lovable.dev).
 
+**Live app**: https://chart-chatter-crypto.lovable.app
+
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/041f9216-19e6-506a-99bb-1197ebb41071).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +26,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS

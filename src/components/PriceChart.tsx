@@ -470,7 +470,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
         <canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />
         {tool && (
           <div
-            className="absolute inset-0 cursor-crosshair touch-none"
+            className="absolute inset-0 z-10 cursor-crosshair touch-none"
             onPointerDown={(e) => {
               const pt = toPoint(e); if (!pt) return;
               if (tool === "hline") { drawingsRef.current.push({ kind: "hline", ...pt, l2: pt.l1, p2: pt.p1 }); setTool(null); return; }

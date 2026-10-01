@@ -403,7 +403,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
     const r = e.currentTarget.getBoundingClientRect();
     const l = chart.timeScale().coordinateToLogical(e.clientX - r.left);
     const p = s.coordinateToPrice(e.clientY - r.top);
-    if (l == null || p == null) return null;
+    if (l == null || p == null) { console.log("pt-null", l, p); return null; }
     return { l1: l as number, p1: p as number };
   };
 

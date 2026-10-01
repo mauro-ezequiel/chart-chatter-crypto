@@ -284,7 +284,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           const atr = recent.reduce((s, c) => s + (c.high - c.low), 0) / (recent.length || 1);
           const atrX = atr ? Math.abs(rl.p2 - rl.p1) / atr : 0;
           const lines = [
-            `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%  (${formatPrice(rl.p2 - rl.p1)})`,
+            `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%  (${rl.p2 >= rl.p1 ? "+" : "-"}${formatPrice(Math.abs(rl.p2 - rl.p1))})`,
             `${bars} velas · rango ${rangePct.toFixed(2)}%`,
             `Volatilidad: ${atrX.toFixed(1)}× vela media`,
           ];

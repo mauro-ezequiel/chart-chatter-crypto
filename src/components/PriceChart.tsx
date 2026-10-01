@@ -29,9 +29,12 @@ import {
   type Zone,
 } from "@/lib/indicators";
 import { connectTrades, type ExStatus } from "@/lib/liveTrades";
+import { formatPrice } from "@/lib/binance";
+import type { Whales, ZoneVol } from "@/lib/trendScore";
 import { TrendDial } from "@/components/TrendDial";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Minus, Ruler, Trash2, TrendingUp } from "lucide-react";
 
 type Props = {
   symbol: string;
@@ -50,6 +53,15 @@ const IND = [
   { id: "rsi", label: "RSI 14" },
 ] as const;
 type IndId = (typeof IND)[number]["id"];
+
+const TOOLS = [
+  { id: "ruler", label: "Regla", icon: Ruler },
+  { id: "hline", label: "Línea horizontal", icon: Minus },
+  { id: "trend", label: "Línea de tendencia", icon: TrendingUp },
+] as const;
+type ToolId = (typeof TOOLS)[number]["id"];
+type Drawing = { kind: ToolId; l1: number; p1: number; l2: number; p2: number };
+const WHALE_USD = 100_000;
 
 const t = (p: Pt[]) => p.map((x) => ({ time: x.time as UTCTimestamp, value: x.value }));
 const fmt = (n: number) =>
@@ -75,13 +87,23 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
   const [error, setError] = useState<string | null>(null);
   const [dataVer, setDataVer] = useState(0);
   const [trendCandles, setTrendCandles] = useState<Candle[]>([]);
+  const [zoneData, setZoneData] = useState<ZoneVol[]>([]);
+  const whaleRef = useRef<Whales>({ buy: 0, sell: 0, count: 0 });
+  const [whales, setWhales] = useState<Whales>({ buy: 0, sell: 0, count: 0 });
+  const [tool, setTool] = useState<ToolId | null>(null);
+  const drawingsRef = useRef<Drawing[]>([]);
+  const draftRef = useRef<Drawing | null>(null);
+  const rulerRef = useRef<Drawing | null>(null);
 
   // trades en vivo de Binance, Binance Futuros, BingX, Bybit y OKX
   useEffect(() => {
     buckets.current = new Map();
     bucketStep.current = 0;
     statusRef.current = {};
+    whaleRef.current = { buy: 0, sell: 0, count: 0 };
     setStatus({});
+    setWhales({ buy: 0, sell: 0, count: 0 });
+    const usd = symbol.endsWith("USDT");
     const stop = connectTrades(symbol, (tr) => {
       if (!bucketStep.current) bucketStep.current = tr.price * 0.0005;
       const k = Math.round(tr.price / bucketStep.current);
@@ -91,17 +113,27 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
       const s = (statusRef.current[tr.ex] ??= { on: true, buy: 0, sell: 0 });
       s.on = true;
       if (tr.buy) s.buy += tr.qty; else s.sell += tr.qty;
+      const notional = tr.price * tr.qty;
+      if (usd && notional >= WHALE_USD) {
+        const w = whaleRef.current;
+        w.count++;
+        if (tr.buy) w.buy += notional; else w.sell += notional;
+      }
     }, (ex, on) => {
       const s = (statusRef.current[ex] ??= { on, buy: 0, sell: 0 });
       s.on = on;
     });
-    const iv = window.setInterval(() => setStatus(JSON.parse(JSON.stringify(statusRef.current))), 1000);
+    const iv = window.setInterval(() => {
+      setStatus(JSON.parse(JSON.stringify(statusRef.current)));
+      setWhales({ ...whaleRef.current });
+    }, 1000);
     return () => { stop(); clearInterval(iv); };
   }, [symbol]);
 
   useEffect(() => {
     const c = candlesRef.current;
     zonesRef.current = zones(c).map((z) => ({ ...z, ...zoneVolume(c, z) }));
+    setZoneData(zonesRef.current);
   }, [dataVer]);
 
   useEffect(() => {
@@ -218,6 +250,52 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           }
         }
       }
+      // dibujos del usuario
+      const lx = (l: number) => ts.logicalToCoordinate(l as never);
+      for (const d of [...drawingsRef.current, ...(draftRef.current?.kind === "trend" ? [draftRef.current] : [])]) {
+        const y1 = y(d.p1);
+        if (y1 == null) continue;
+        ctx.strokeStyle = "#f5c542"; ctx.fillStyle = "#f5c542"; ctx.lineWidth = 1.5;
+        if (d.kind === "hline") {
+          ctx.beginPath(); ctx.moveTo(0, y1); ctx.lineTo(pw, y1); ctx.stroke();
+          ctx.font = "bold 10px sans-serif"; ctx.fillText(formatPrice(d.p1), pw - 80, y1 - 4);
+        } else {
+          const x1 = lx(d.l1), x2 = lx(d.l2), y2 = y(d.p2);
+          if (x1 == null || x2 == null || y2 == null) continue;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          for (const [a, b] of [[x1, y1], [x2, y2]]) { ctx.beginPath(); ctx.arc(a!, b!, 3, 0, Math.PI * 2); ctx.fill(); }
+        }
+      }
+      const rl = rulerRef.current;
+      if (rl) {
+        const x1 = lx(rl.l1), x2 = lx(rl.l2), y1 = y(rl.p1), y2 = y(rl.p2);
+        if (x1 != null && x2 != null && y1 != null && y2 != null) {
+          const up = rl.p2 >= rl.p1;
+          ctx.fillStyle = up ? "rgba(22,199,132,0.18)" : "rgba(234,57,67,0.18)";
+          ctx.strokeStyle = up ? "#16c784" : "#ea3943";
+          ctx.fillRect(x1, y1, x2 - x1, y2 - y1); ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+          const a = Math.max(0, Math.round(Math.min(rl.l1, rl.l2))), b = Math.min(candles.length - 1, Math.round(Math.max(rl.l1, rl.l2)));
+          const seg = candles.slice(a, b + 1);
+          const bars = Math.round(Math.abs(rl.l2 - rl.l1));
+          const pct = ((rl.p2 - rl.p1) / rl.p1) * 100;
+          const hi = seg.length ? Math.max(...seg.map((c) => c.high)) : 0, lo = seg.length ? Math.min(...seg.map((c) => c.low)) : 0;
+          const rangePct = lo ? ((hi - lo) / lo) * 100 : 0;
+          const recent = candles.slice(-100);
+          const atr = recent.reduce((s, c) => s + (c.high - c.low), 0) / (recent.length || 1);
+          const atrX = atr ? Math.abs(rl.p2 - rl.p1) / atr : 0;
+          const lines = [
+            `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%  (${rl.p2 >= rl.p1 ? "+" : "-"}${formatPrice(Math.abs(rl.p2 - rl.p1))})`,
+            `${bars} velas · rango ${rangePct.toFixed(2)}%`,
+            `Volatilidad: ${atrX.toFixed(1)}× vela media`,
+          ];
+          const bx = Math.min(Math.max(x1, x2) + 6, pw - 170), by = Math.min(y1, y2);
+          ctx.fillStyle = "rgba(15,23,42,0.92)"; ctx.fillRect(bx, by, 166, 46);
+          ctx.font = "bold 11px sans-serif"; ctx.fillStyle = up ? "#16c784" : "#ea3943";
+          ctx.fillText(lines[0]!, bx + 6, by + 14);
+          ctx.font = "10px sans-serif"; ctx.fillStyle = "rgba(226,232,240,0.9)";
+          ctx.fillText(lines[1]!, bx + 6, by + 28); ctx.fillText(lines[2]!, bx + 6, by + 41);
+        }
+      }
       ctx.restore();
     };
     raf = requestAnimationFrame(draw);
@@ -314,8 +392,20 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
     return () => { cancelled = true; ws?.close(); };
   }, [symbol, interval, onPrice]);
 
+  useEffect(() => { drawingsRef.current = []; rulerRef.current = null; draftRef.current = null; }, [symbol, interval]);
+
   const toggle = (id: IndId) =>
     setActive((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const toPoint = (e: React.PointerEvent<HTMLDivElement>) => {
+    const chart = chartRef.current, s = seriesRef.current;
+    if (!chart || !s) return null;
+    const r = e.currentTarget.getBoundingClientRect();
+    const l = chart.timeScale().coordinateToLogical(e.clientX - r.left);
+    const p = s.coordinateToPrice(e.clientY - r.top);
+    if (l == null || p == null) return null;
+    return { l1: l as number, p1: p as number };
+  };
 
   return (
     <div ref={wrapRef} className="rounded-2xl border border-border bg-card p-3">
@@ -353,9 +443,52 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           </Button>
         ))}
       </div>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+        <span className="mr-1 text-[11px] font-semibold uppercase text-muted-foreground">Dibujo</span>
+        {TOOLS.map((d) => (
+          <Button
+            key={d.id}
+            onClick={() => setTool((cur) => (cur === d.id ? null : d.id))}
+            variant="outline"
+            size="sm"
+            aria-pressed={tool === d.id}
+            className={cn(
+              "h-7 rounded-full px-2.5 text-[11px] font-medium",
+              tool === d.id ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <d.icon className="size-3.5" /> {d.label}
+          </Button>
+        ))}
+        <Button variant="ghost" size="sm" className="h-7 px-2.5 text-[11px]" onClick={() => { drawingsRef.current = []; rulerRef.current = null; }}>
+          <Trash2 className="size-3.5" /> Borrar
+        </Button>
+        {tool && <span className="text-[11px] text-primary">{tool === "hline" ? "Tocá un precio" : "Arrastrá de un punto a otro"}</span>}
+      </div>
       <div className="relative">
         <div ref={containerRef} className={cn("w-full", active.has("rsi") ? "h-[500px]" : "h-[420px]")} />
         <canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />
+        {tool && (
+          <div
+            className="absolute inset-0 z-10 cursor-crosshair touch-none"
+            onPointerDown={(e) => {
+              const pt = toPoint(e); if (!pt) return;
+              if (tool === "hline") { drawingsRef.current.push({ kind: "hline", ...pt, l2: pt.l1, p2: pt.p1 }); setTool(null); return; }
+              e.currentTarget.setPointerCapture(e.pointerId);
+              draftRef.current = { kind: tool, ...pt, l2: pt.l1, p2: pt.p1 };
+              if (tool === "ruler") rulerRef.current = draftRef.current;
+            }}
+            onPointerMove={(e) => {
+              const d = draftRef.current, pt = toPoint(e); if (!d || !pt) return;
+              d.l2 = pt.l1; d.p2 = pt.p1;
+            }}
+            onPointerUp={() => {
+              const d = draftRef.current; draftRef.current = null;
+              if (d && d.kind === "trend" && (d.l1 !== d.l2 || d.p1 !== d.p2)) drawingsRef.current.push(d);
+              setTool(null);
+            }}
+          />
+        )}
         {(loading || error) && (
           <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-card/70 text-sm text-muted-foreground">
             {error ?? "Cargando gráfico…"}
@@ -385,7 +518,7 @@ export function PriceChart({ symbol, interval, onIntervalChange, onPrice }: Prop
           );
         })}
       </div>
-      <TrendDial candles={trendCandles} interval={interval} />
+      <TrendDial symbol={symbol} candles={trendCandles} interval={interval} zones={zoneData} whales={whales} />
       <p className="mt-2 text-[11px] text-muted-foreground">
         Ajustado para 30M–1D. El perfil de volumen se calcula sobre el rango visible: haz zoom o desplázate para cambiar el rango.
       </p>
